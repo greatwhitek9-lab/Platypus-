@@ -8,4 +8,6 @@ target_sources(app PRIVATE
     src/tool_registry.c
     src/restricted_stubs.c
     src/passive_survey.c
+    src/boot_splash.c
+    src/boot_splash_image.c
 )
