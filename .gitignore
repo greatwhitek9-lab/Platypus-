@@ -6,6 +6,9 @@ build/
 captures/
 releases/*.uf2
 *.parrotbak
+*.sqlite
+*.sqlite3
+*.db
 
 # Python cache
 __pycache__/
@@ -18,4 +21,5 @@ __pycache__/
 
 # Local envs
 .venv/
+.venv-naughty/
 venv/
