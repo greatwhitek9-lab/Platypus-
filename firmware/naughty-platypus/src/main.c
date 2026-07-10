@@ -1,3 +1,5 @@
+int np_passive_survey_drain(void);
+
 #include <zephyr/drivers/uart.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/device.h>
@@ -163,10 +165,90 @@ static void np_cdc_write_u32(const char *prefix, uint32_t value, const char *suf
     np_cdc_write(buf);
 }
 
+
+static int cmd_np_version_oneword(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    shell_print(sh, "{\"type\":\"version\",\"app\":\"naughty-platypus\",\"build\":\"oneword_cmds_v1\",\"mode\":\"passive_ble_survey\"}");
+    return 0;
+}
+
+static int cmd_np_status_oneword(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(sh);
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    return np_passive_survey_status();
+}
+
+static int cmd_np_survey_oneword(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(sh);
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    np_passive_survey_drain();
+    return np_passive_survey_status();
+}
+
+static int cmd_np_scan_oneword(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(sh);
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    return np_passive_survey_start();
+}
+
+static int cmd_np_stop_oneword(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(sh);
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    return np_passive_survey_stop();
+}
+
+static int cmd_np_reset_oneword(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(sh);
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    return np_passive_survey_reset();
+}
+
+static int cmd_np_commands_oneword(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    shell_print(sh, "version");
+    shell_print(sh, "status");
+    shell_print(sh, "survey");
+    shell_print(sh, "scan");
+    shell_print(sh, "stop");
+    shell_print(sh, "reset");
+    shell_print(sh, "commands");
+    return 0;
+}
+
+SHELL_CMD_REGISTER(version, NULL, "Show Naughty Platypus firmware version.", cmd_np_version_oneword);
+SHELL_CMD_REGISTER(status, NULL, "Show BLE survey counters.", cmd_np_status_oneword);
+SHELL_CMD_REGISTER(survey, NULL, "Drain BLE queue and show counters.", cmd_np_survey_oneword);
+SHELL_CMD_REGISTER(scan, NULL, "Start passive BLE survey.", cmd_np_scan_oneword);
+SHELL_CMD_REGISTER(stop, NULL, "Stop passive BLE survey.", cmd_np_stop_oneword);
+SHELL_CMD_REGISTER(reset, NULL, "Reset BLE survey counters.", cmd_np_reset_oneword);
+SHELL_CMD_REGISTER(commands, NULL, "List one-word Naughty Platypus commands.", cmd_np_commands_oneword);
+
+
 int main(void)
 {
     np_cdc_write("\r\n{\"type\":\"serial_boot\",\"app\":\"naughty-platypus\",\"path\":\"direct_cdc\"}\r\n");
-    np_cdc_write("{\"type\":\"firmware_marker\",\"build\":\"ble_survey_stable_v1\"}\r\n");
+    np_cdc_write("{\"type\":\"firmware_marker\",\"build\":\"oneword_cmds_v1\"}\r\n");
     int err;
 
 
@@ -196,7 +278,8 @@ int main(void)
 
     /* auto_survey_status_loop: print counters without needing shell RX */
     while (1) {
-        k_sleep(K_SECONDS(10));
+        k_sleep(K_SECONDS(3));
+        np_passive_survey_drain();
         np_passive_survey_status();
     }
     char scan_msg[128];

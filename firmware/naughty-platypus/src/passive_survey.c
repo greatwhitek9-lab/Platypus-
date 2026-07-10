@@ -29,6 +29,21 @@ struct parsed_ad {
 static bool survey_running;
 static bool scan_cb_registered;
 static uint32_t adv_events;
+
+#define NP_ADV_QUEUE_LEN 128
+
+struct np_adv_record {
+    bt_addr_le_t addr;
+    int8_t rssi;
+    uint8_t adv_type;
+    uint8_t data_len;
+};
+
+K_MSGQ_DEFINE(np_adv_msgq, sizeof(struct np_adv_record), NP_ADV_QUEUE_LEN, 4);
+
+static uint32_t queued_events;
+static uint32_t dropped_events;
+static uint32_t drained_events;
 static uint32_t named_events;
 static uint32_t mfg_events;
 static uint32_t svc_events;
@@ -139,18 +154,31 @@ static const char *phy_to_str(uint8_t phy)
 
 static void scan_recv(const struct bt_le_scan_recv_info *info, struct net_buf_simple *buf)
 {
-    ARG_UNUSED(buf);
+    struct np_adv_record rec = {0};
 
     adv_events++;
 
-    if (info != NULL) {
-        if (info->rssi > strongest_rssi) {
-            strongest_rssi = info->rssi;
-        }
+    if (info == NULL || info->addr == NULL) {
+        return;
+    }
 
-        if (info->rssi < weakest_rssi) {
-            weakest_rssi = info->rssi;
-        }
+    rec.addr = *info->addr;
+    rec.rssi = info->rssi;
+    rec.adv_type = info->adv_type;
+    rec.data_len = buf ? (buf->len > 255U ? 255U : (uint8_t)buf->len) : 0U;
+
+    if (info->rssi > strongest_rssi) {
+        strongest_rssi = info->rssi;
+    }
+
+    if (info->rssi < weakest_rssi) {
+        weakest_rssi = info->rssi;
+    }
+
+    if (k_msgq_put(&np_adv_msgq, &rec, K_NO_WAIT) == 0) {
+        queued_events++;
+    } else {
+        dropped_events++;
     }
 }
 
@@ -211,6 +239,39 @@ int np_passive_survey_stop(void)
     return err;
 }
 
+
+int np_passive_survey_drain(void)
+{
+    struct np_adv_record rec;
+    char addr[BT_ADDR_LE_STR_LEN];
+    uint32_t drained_now = 0U;
+
+    while (k_msgq_get(&np_adv_msgq, &rec, K_NO_WAIT) == 0) {
+        bt_addr_le_to_str(&rec.addr, addr, sizeof(addr));
+        drained_events++;
+        drained_now++;
+
+        printk("{\"type\":\"adv_summary\","
+               "\"addr\":\"%s\","
+               "\"rssi\":%d,"
+               "\"adv_type\":%u,"
+               "\"data_len\":%u,"
+               "\"drained_events\":%u}\n",
+               addr,
+               rec.rssi,
+               rec.adv_type,
+               rec.data_len,
+               drained_events);
+
+        /* Keep serial output bounded so BLE/USB stays stable. */
+        if (drained_now >= 32U) {
+            break;
+        }
+    }
+
+    return (int)drained_now;
+}
+
 int np_passive_survey_status(void)
 {
     printk("{\"type\":\"survey_status\","
@@ -229,12 +290,26 @@ int np_passive_survey_status(void)
            strongest_rssi,
            weakest_rssi);
 
+    printk("{\"type\":\"queue_status\","
+           "\"queued_events\":%u,"
+           "\"dropped_events\":%u,"
+           "\"drained_events\":%u,"
+           "\"pending\":%u}\n",
+           queued_events,
+           dropped_events,
+           drained_events,
+           k_msgq_num_used_get(&np_adv_msgq));
+
     return 0;
 }
 
 int np_passive_survey_reset(void)
 {
     adv_events = 0;
+    queued_events = 0;
+    dropped_events = 0;
+    drained_events = 0;
+    k_msgq_purge(&np_adv_msgq);
     named_events = 0;
     mfg_events = 0;
     svc_events = 0;
