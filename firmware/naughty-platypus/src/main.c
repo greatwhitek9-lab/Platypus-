@@ -13,10 +13,11 @@
 #include <zephyr/usb/usb_device.h>
 #endif
 
+#include "boot_splash.h"
 #include "passive_survey.h"
 #include "tool_registry.h"
 
-#define NP_FIRMWARE_BUILD "ble_active_default_v5"
+#define NP_FIRMWARE_BUILD "ble_active_splash_v6"
 
 static bool bt_ready;
 
@@ -57,9 +58,10 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
 
-    shell_print(sh, "bt_ready=%s survey_running=%s",
+    shell_print(sh, "bt_ready=%s survey_running=%s display_ready=%s",
                 bt_ready ? "yes" : "no",
-                np_passive_survey_is_running() ? "yes" : "no");
+                np_passive_survey_is_running() ? "yes" : "no",
+                np_boot_splash_available() ? "yes" : "no");
 
     return np_passive_survey_status();
 }
@@ -71,6 +73,22 @@ static int cmd_reset_stats(const struct shell *sh, size_t argc, char **argv)
 
     shell_print(sh, "survey counters reset");
     return np_passive_survey_reset();
+}
+
+static int cmd_splash(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    int err = np_boot_splash_show();
+
+    if (err) {
+        shell_warn(sh, "boot splash unavailable: %d", err);
+    } else {
+        shell_print(sh, "boot splash redrawn");
+    }
+
+    return err;
 }
 
 static int cmd_tools_list(const struct shell *sh, size_t argc, char **argv)
@@ -121,6 +139,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_np,
     SHELL_CMD(scan_off, NULL, "Stop BLE advertisement survey", cmd_scan_off),
     SHELL_CMD(status, NULL, "Show survey status and counters", cmd_status),
     SHELL_CMD(reset_stats, NULL, "Reset survey counters", cmd_reset_stats),
+    SHELL_CMD(splash, NULL, "Redraw the optional boot splash", cmd_splash),
     SHELL_CMD(tools_list, NULL, "List safe and restricted tool registry", cmd_tools_list),
     SHELL_CMD(tools_run, NULL, "Run enabled tool by ID", cmd_tools_run),
     SHELL_SUBCMD_SET_END
@@ -246,6 +265,15 @@ static int cmd_np_mode_oneword(const struct shell *sh, size_t argc, char **argv)
     return np_passive_survey_mode_status();
 }
 
+static int cmd_np_splash_oneword(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(sh);
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    return np_boot_splash_show();
+}
+
 static int cmd_np_commands_oneword(const struct shell *sh, size_t argc, char **argv)
 {
     ARG_UNUSED(argc);
@@ -261,6 +289,7 @@ static int cmd_np_commands_oneword(const struct shell *sh, size_t argc, char **a
     shell_print(sh, "active");
     shell_print(sh, "passive");
     shell_print(sh, "mode");
+    shell_print(sh, "splash");
     return 0;
 }
 
@@ -274,11 +303,10 @@ SHELL_CMD_REGISTER(commands, NULL, "List one-word Naughty Platypus commands.", c
 SHELL_CMD_REGISTER(active, NULL, "Use active BLE scan mode for scan-response names.", cmd_np_active_oneword);
 SHELL_CMD_REGISTER(passive, NULL, "Use passive BLE scan mode.", cmd_np_passive_oneword);
 SHELL_CMD_REGISTER(mode, NULL, "Show active/passive scan mode.", cmd_np_mode_oneword);
+SHELL_CMD_REGISTER(splash, NULL, "Redraw the optional TFT boot splash.", cmd_np_splash_oneword);
 
 int main(void)
 {
-    np_cdc_write("\r\n{\"type\":\"serial_boot\",\"app\":\"naughty-platypus\",\"path\":\"direct_cdc\"}\r\n");
-    np_cdc_write("{\"type\":\"firmware_marker\",\"build\":\"" NP_FIRMWARE_BUILD "\"}\r\n");
     int err;
 
 #if defined(CONFIG_USB_DEVICE_STACK)
@@ -287,6 +315,12 @@ int main(void)
         printk("{\"type\":\"error\",\"where\":\"usb_enable\",\"err\":%d}\n", err);
     }
 #endif
+
+    /* Optional and non-fatal: BLE survey boot continues without a TFT. */
+    (void)np_boot_splash_show();
+
+    np_cdc_write("\r\n{\"type\":\"serial_boot\",\"app\":\"naughty-platypus\",\"path\":\"direct_cdc\"}\r\n");
+    np_cdc_write("{\"type\":\"firmware_marker\",\"build\":\"" NP_FIRMWARE_BUILD "\"}\r\n");
 
     printk("\n");
     printk("Naughty Platypus Ubertooth-Style BLE Lab Suite\n");
@@ -300,7 +334,7 @@ int main(void)
 
     bt_ready = true;
 
-    printk("{\"type\":\"status\",\"bluetooth\":\"ready\",\"hint\":\"run commands, mode, status, or survey\"}\n");
+    printk("{\"type\":\"status\",\"bluetooth\":\"ready\",\"hint\":\"run commands, mode, status, splash, or survey\"}\n");
 
     int scan_err = np_passive_survey_start();
     np_cdc_write_u32("{\"path\":\"direct_cdc\",\"type\":\"scan_start\",\"err\":", scan_err, "}\r\n");
