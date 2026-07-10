@@ -1,5 +1,13 @@
 menu "Naughty Platypus Ubertooth-Style Lab Suite"
 
+config NP_BOOT_SPLASH
+    bool "Show the Naughty Platypus boot splash on the optional TFT"
+    default y
+    help
+      Enables the 135x240 RGB565 boot splash for the optional Heltec T114
+      ST7789V display. The firmware remains fully operational when the display
+      node or hardware is unavailable; display failures are logged and ignored.
+
 config NP_ENABLE_PASSIVE_SURVEY
     bool "Enable passive BLE advertisement survey"
     default y
