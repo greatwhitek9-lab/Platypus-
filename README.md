@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Active scanning by default · Passive mode available · JSON streaming · Kali/Parrot host console · CSV/SQLite/GPS
+  Optional TFT boot splash · Active/passive scanning · JSON streaming · Kali/Parrot host console · CSV/SQLite/GPS
 </p>
 
 > [!IMPORTANT]
@@ -33,6 +33,7 @@ The firmware performs scanning on the board and streams newline-delimited JSON o
 - GPSD or static-coordinate tagging
 - Database-backed survey sessions
 - Optional advertising-channel counters when a controller event exposes a channel index
+- Optional 135×240 Naughty Platypus boot splash for the Heltec ST7789V TFT
 
 ---
 
@@ -78,6 +79,48 @@ Expected release artifact:
 
 ```text
 releases/naughty-platypus-HT-n5262-offset1000.uf2
+```
+
+---
+
+## Optional Heltec TFT boot splash
+
+When `CONFIG_NP_BOOT_SPLASH=y`, the firmware draws the Naughty Platypus artwork on the optional **1.14-inch ST7789V 135×240 TFT** during every normal boot. The image remains visible while BLE scanning and USB serial operation continue.
+
+The splash implementation is deliberately non-fatal:
+
+- It checks for the Zephyr `zephyr,display` device before drawing.
+- It validates the expected 135×240 RGB565 display geometry.
+- Display, SPI, power, backlight, or draw failures are reported as JSON and ignored.
+- BLE scanning, commands, logging, and the Kali/Parrot host console continue when no screen is fitted.
+- The TFT power rail is enabled before the Zephyr display driver initializes, while the backlight stays off until the frame is complete.
+- The attached artwork is converted to a 135×240, 256-color indexed asset stored in `boot_splash_data_00.inc` through `boot_splash_data_07.inc`.
+- A small eight-row working buffer is used instead of allocating a full framebuffer.
+
+A physically absent display cannot provide positive detection because the board's SPI display bus is write-only. In that case, attempted writes are harmless and the rest of the firmware continues normally.
+
+To redraw the splash from the serial shell:
+
+```text
+splash
+```
+
+Disable it at build time by changing:
+
+```text
+CONFIG_NP_BOOT_SPLASH=n
+```
+
+The display-ready firmware marker is:
+
+```json
+{"type":"firmware_marker","build":"ble_active_splash_v6"}
+```
+
+Successful draw output:
+
+```json
+{"type":"display_status","boot_splash":"shown","width":135,"height":240}
 ```
 
 ---
@@ -160,14 +203,6 @@ python3 -m venv .venv-naughty
 source .venv-naughty/bin/activate
 python3 -m pip install --upgrade pip
 python3 -m pip install -r tools/requirements-naughty-platypus.txt
-```
-
-Or use the setup script:
-
-```bash
-chmod +x scripts/setup_naughty_host.sh
-./scripts/setup_naughty_host.sh
-source .venv-naughty/bin/activate
 ```
 
 ## 3. Fix serial permissions
@@ -254,6 +289,7 @@ Type one command per line:
 | `mode` | Show active/passive mode |
 | `reset` | Reset counters and queue |
 | `commands` | List commands |
+| `splash` | Redraw the optional TFT boot splash |
 
 Active scanning is the default. Active scanning can receive scan-response data and therefore discovers more local names. Some devices will still show an empty name because they do not advertise one.
 
@@ -288,8 +324,8 @@ a         active mode
 p         passive mode
 r         reset firmware counters
 v         toggle strongest/recent sorting
-d         recently-seen view
-t         strongest-device view
+d         request firmware device summaries when supported
+t         request firmware strongest summaries when supported
 c         show advertising-channel capability/counts
 ```
 
@@ -428,7 +464,25 @@ python3 tools/naughty_platypus_host.py \
   --manufacturer-db /path/to/company_identifiers.csv
 ```
 
-The CSV parser accepts common ID columns such as `Decimal`, `Value`, `Company Identifier`, `company_id`, `ID`, or `Hex`, and common name columns such as `Company`, `Company Name`, `Organization`, or `Name`.
+The CSV parser accepts common ID columns such as:
+
+```text
+Decimal
+Value
+Company Identifier
+company_id
+ID
+Hex
+```
+
+and name columns such as:
+
+```text
+Company
+Company Name
+Organization
+Name
+```
 
 Manufacturer identifiers are decoded from the first two manufacturer-data bytes using Bluetooth little-endian ordering.
 
@@ -615,6 +669,12 @@ If `dropped_events` rises rapidly, reduce serial output, use passive mode in den
 Platypus/
 ├── README.md
 ├── firmware/naughty-platypus/
+│   └── src/
+│       ├── boot_splash.c
+│       ├── boot_splash.h
+│       ├── boot_splash_image.c
+│       ├── boot_splash_image.h
+│       └── boot_splash_data_00.inc ... boot_splash_data_07.inc
 ├── scripts/
 ├── tools/
 │   ├── naughty_platypus_host.py
